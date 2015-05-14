@@ -1,25 +1,183 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+output: html_document
+keep_md: true
 ---
 
+Nowadays, collecting data about personal movement is being facilitated by monitoring devices such as
+as [Fibit][1], [Nike Fuelband][2], or [Jawbone Up][3]. But these data remain-under utilized both
+because the raw data are hard to obtain and there is a lack of satistical methods and software for
+processing and interpreting the data.
+
+This study  is amaing to analyze some data from a monitoring device and pull out some interesting results.
+This device collects at 5 minute intervals through out the day.The data consists of two months of data
+from an anonymous individual collected during the months of Octover and November, 2012 and include the
+number of steps taken in 5 minute intervals each day.
 
 ## Loading and preprocessing the data
 
+Let's load the data in **activity**
+
+```{r}
+activity <- read.csv("activity.csv")
+message("data loaded in activity")
+```
+
+The raw data respect tidy data rules then no need of major transformations to make.
 
 
 ## What is mean total number of steps taken per day?
+Since in this part we are processing data by day, let's aggregate the data by that factor.
+```{r}
+#Calculate the total number of steps taken per day 
+perday <- aggregate(steps ~ date, data = activity, sum)
+totalSteps <- sum(perday$steps)
+sprintf("Total steps : %d", totalSteps)
+```
 
+Then, to analyze the distribution of the number of steps per day, here is it's histogram in 24(hours) breaks:
+```{r}
+#Making the histogram
+hist(perday$steps,prob = TRUE,  main = " Number of steps per day histogram", xlab = "Number of step per day", breaks = 24, col = "grey")
+lines(density(perday$steps), type ="l", col = "red", lwd = 2, , ylab = "Density")
+themean <- mean(perday$steps, na.rm = TRUE)
+themedian <- median(perday$steps, na.rm = TRUE)
+```
 
+We can say that the data is normally distributed around the mean.
+
+The summary of this distribution leads to a mean value :`r themean` and a median value :`r themedian`. It worths nothing to say that the two values are actually close which prove again the conclusion made from the previous histogram.
 
 ## What is the average daily activity pattern?
+Now, let's analyze the variation of the average number of step per interval. 
+Let's contruct the datastructure for this use
+```{r}
+perint = aggregate(steps ~ interval, data = activity, mean)
+```
+
+ -1 The times series of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis) is :
+```{r}
+plot(perint$steps ~ perint$interval, type = "l", lwd = 1, col = "blue", xlab = "Interval", ylab = "Average steps/all days", main = " Average steps averaged taken by all days")
+max_av_step <- max(perint$steps)
+# And it occurs at
+max_step_interval <- perint$interval[[which(perint$steps == max_av_step)]]
+eps <- 1e-4
+abline(h = max_av_step, lwd = 2, col = "green")
+abline(v = max_step_interval, lwd = 2, col = "red" )
+axis(1, at = max_step_interval, labels = max_step_interval)
+
+```
 
 
+ -2 The max average steps is at 835 interval ie `r as.integer(835/60)`H:`r 835%%60`.
+ 
+###Conclusions :
+  * The first 500 measures correspond to 0:00PM-8:00AM time slot and the number of steps in that time 
+  slot is very low because it's time of sleeping(rest) for many people.
+  * Around the 8:00AM, people goes to work. They take some steps to get to bus or train station and leave the stations for workplaces or they use their own cars. This is why average steps taken around 8:00AM is about 50 steps.
+  * The max average steps is at 835 interval ie `r as.integer(835/60)`H:`r 835%%60`, at that time people are doing shopping or walking from/toward restaurants. Here are the causes of the peak
+  * The afternoon to give special pattern because of different kind of activities available.
+  
 
 ## Imputing missing values
 
+In this step, we will introduce a bias throought the missing values.
+```{r}
+nmissing <- sum(is.na(activity$steps))
+total <- length(activity$steps)
+```
+  1- The number of missing values is `r nmissing` which is `r sprintf("%0.2f", nmissing* 100/total)` percents of total interval of collection periode. 
+  
+  2- Let's fill the gap of NA values in steps values by replacing each NA by either the mean of available values, or the median of availables values or average value number of steps taken in that that interval.  For this purpose this we wille define the filler function as follow:
+  * The function will take a parameter **strategy** wich takes `r '"mean", "median" or "average"'` as value to decide which values will replace the NAs values in the number of steps
+  
+  3- The new data created from the default ,in which every NA values of **activity** is filled based on one of three filling  strategy describe previously, is the following:
 
+```{r}
+# Replace the missing values in number of steps taken in the original dataset with a  concrete
+# based on type of the strategy :
+#   - "mean"    : each missing value is replaced by mean the present values
+#   - "median"  : each missing value is replaced by median the present values 
+filler <- function(original, strategy = "mean"){
+  if(! (strategy %in% c("mean", "median", "average")))
+    stop('strategy must be "mean", "median" or "average"')
+  
+  filled <- original
+  if(strategy == "mean")
+    filled$steps[is.na(filled$steps)] <- mean(filled$steps, na.rm = TRUE)
+  else if(strategy == "median")
+    filled$steps[is.na(filled$steps)] <- median(filled$steps, na.rm = TRUE)
+  else{
+    missings <- which(is.na(filled$steps))
+    len <- length(perint$steps)
+    ave <- function(x){
+      #print(sprintf("the index : %i", x))
+      y <- ifelse(x %% (len + 1) != 0,x %% (len + 1), 1 )
+      filled$steps[x] <<- perint$steps[y]
+         
+    }
+    
+    lapply(missings, ave) 
+  }
+  
+  filled
+    
+}
+
+# The new dataset
+thefilled <- filler(activity)
+```
+
+3- After constructing the new biased dataset, let see a histogram and new values of the mean and the median
+```{r}
+
+perday <- aggregate(steps ~ date, data = thefilled, sum)
+#Making the histogram
+hist(perday$steps,prob = TRUE,  main = " Number of steps per day histogram", xlab = "Number of step per day", breaks = 24, col = "grey")
+lines(density(perday$steps), type ="l", col = "red", lwd = 2, , ylab = "Density")
+newmean <- mean(perday$steps)
+newmedian <- median(perday$steps)
+```
+
+The new mean is `r newmean` and  the new median is `r newmedian`, those values are similar to the unbiaised values. Then strategy for filling the missing is not so perturbative as long as the percentage of missing values is not too high.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+In this section, we will make a comparative study between weekdays and weekends. It will be useful to  know which day is a weekday or weekend. 
+
+This function is aiming to give the difference between the two type of day. Therefore the factor to separate weekday and weekend is **workday** defined in following script:
+```{r}
+# First day
+firstday <- as.Date(levels(thefilled$date)[1], "%Y-%m-%d")
+weekdays(firstday)
+
+#As far as the first day is a monday, the relation between indexes and days lead to
+# week or weekend day function as this
+weekdayOr <- function(x){
+  y = x %% 7
+  
+  if( y == 6 || y == 0) "weekend"
+  else "weekday"
+}
+
+weekday <- factor(sapply(1:length(thefilled$date), weekdayOr))
+
+```
+
+
+Finally the difference between the  of weekdays and weekend in term of average step per interval can is illustrated by the next graphic.
+
+```{r}
+thefilled$date <- weekday
+
+byday <- aggregate(steps ~ date + interval, thefilled, mean)
+
+library(lattice)
+xyplot(steps ~ interval | date , data = byday, layout = c(1, 2), type = "l", ylab = "Number of steps")
+```
+
+The pattern are similar on most part of day but users seems to have more activity in  the weekend day afternoons.
+
+[1]:http://www.fitbit.com/
+[2]:http://www.nike.com/us/en_us/c/nikeplus-fuelband
+[3]:https://jawbone.com/up
